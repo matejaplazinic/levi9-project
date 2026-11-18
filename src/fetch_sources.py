@@ -41,11 +41,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = p.parse_args(argv)
     if args.files < 1:
         p.error("--files must be >= 1")
-    if not args.skip_tourist:
-        try:
+    try:
+        if args.day is not None:
+            s3_source.validate_day(args.day)
+        if not args.skip_tourist:
             tourist_api.validate_date(args.tourist_date)
-        except ValueError as e:
-            p.error(str(e))
+            tourist_api.validate_url(args.tourist_url)
+    except ValueError as e:
+        p.error(str(e))
     return args
 
 
