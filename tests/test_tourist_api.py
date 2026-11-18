@@ -92,12 +92,90 @@ def test_fetch_estimate_validates_date_before_calling():
     assert session.calls == []
 
 
-@pytest.mark.parametrize("status", [401, 403, 500])
-def test_fetch_estimate_http_error_is_clear_and_hides_token(status, caplog):
-    session = FakeSession(FakeResponse(status, None, text=f"error, got {TOKEN}"))
+VALID = {"for_date": "2022-04-15", "info": [{"name": "Novi Sad", "estimated_no_people": 1234}]}
+
+
+@pytest.mark.parametrize("status", [301, 401, 403, 500, 503])
+@pytest.mark.parametrize(
+    "body",
+    [
+        f"error, got {TOKEN}",
+        # Token split by a 300-char truncation boundary must not leak either.
+        "x" * 290 + TOKEN,
+    ],
+)
+def test_fetch_estimate_http_error_never_includes_response_body(status, body, caplog):
+    session = FakeSession(FakeResponse(status, None, text=body))
     with caplog.at_level(logging.DEBUG):
         with pytest.raises(tourist_api.TouristApiError) as exc:
             tourist_api.fetch_estimate(URL, "2022-04-15", TOKEN, session=session)
     assert str(status) in str(exc.value)
+    for part in (TOKEN, TOKEN[:10], "super-secret"):
+        assert part not in str(exc.value)
+        assert part not in caplog.text
+
+
+@pytest.mark.parametrize("bad_token", ["abc\nSECRETPART", "abc\rSECRETPART", " leading", "", "tab\tSECRETPART"])
+def test_fetch_estimate_rejects_invalid_token_without_echoing_it(bad_token):
+    session = FakeSession(FakeResponse(200, VALID))
+    with pytest.raises(tourist_api.TouristApiError) as exc:
+        tourist_api.fetch_estimate(URL, "2022-04-15", bad_token, session=session)
+    assert session.calls == []
+    assert "SECRETPART" not in str(exc.value)
+
+
+def test_fetch_estimate_wraps_transport_errors_without_details():
+    import requests
+
+    class Boom:
+        def get(self, url, **kwargs):
+            raise requests.exceptions.InvalidHeader(f"bad header value: 'Bearer {TOKEN}'")
+
+    with pytest.raises(tourist_api.TouristApiError) as exc:
+        tourist_api.fetch_estimate(URL, "2022-04-15", TOKEN, session=Boom())
     assert TOKEN not in str(exc.value)
-    assert TOKEN not in caplog.text
+    assert exc.value.__cause__ is None and exc.value.__suppress_context__
+
+
+@pytest.mark.parametrize("url", ["http://example.com/", "ftp://example.com/", "https:///nohost", "example.com"])
+def test_fetch_estimate_requires_https_url(url):
+    session = FakeSession(FakeResponse(200, VALID))
+    with pytest.raises(ValueError, match="HTTPS"):
+        tourist_api.fetch_estimate(url, "2022-04-15", TOKEN, session=session)
+    assert session.calls == []
+
+
+def test_fetch_estimate_disables_redirects():
+    session = FakeSession(FakeResponse(200, VALID))
+    tourist_api.fetch_estimate(URL, "2022-04-15", TOKEN, session=session)
+    assert session.calls[0][1]["allow_redirects"] is False
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"for_date": "2022-04-16", "info": VALID["info"]},  # wrong date
+        {"for_date": "2022-04-15"},  # missing info
+        {"for_date": "2022-04-15", "info": "x"},  # info not a list
+        {"for_date": "2022-04-15", "info": [{"name": "Novi Sad"}]},  # missing count
+        {"for_date": "2022-04-15", "info": [{"name": 1, "estimated_no_people": 1}]},
+        {"for_date": "2022-04-15", "info": [{"name": "A", "estimated_no_people": "12"}]},
+        {"for_date": "2022-04-15", "info": [{"name": "A", "estimated_no_people": True}]},
+        {"for_date": "2022-04-15", "info": [{"name": "A", "estimated_no_people": -1}]},
+        ["not", "a", "dict"],
+    ],
+)
+def test_fetch_estimate_rejects_unexpected_payload(payload):
+    session = FakeSession(FakeResponse(200, payload))
+    with pytest.raises(tourist_api.TouristApiError):
+        tourist_api.fetch_estimate(URL, "2022-04-15", TOKEN, session=session)
+
+
+def test_fetch_estimate_rejects_non_json_body():
+    class NotJson(FakeResponse):
+        def json(self):
+            raise ValueError("Expecting value")
+
+    session = FakeSession(NotJson(200, None, text="<html>"))
+    with pytest.raises(tourist_api.TouristApiError, match="JSON"):
+        tourist_api.fetch_estimate(URL, "2022-04-15", TOKEN, session=session)
