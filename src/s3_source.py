@@ -40,16 +40,33 @@ def find_city_prefix(s3, bucket: str, source: str, station_id: str) -> str:
     raise ValueError(f"Station {station_id} not found in s3://{bucket}/{source}/")
 
 
+def validate_day(value: str) -> str:
+    """Accept only zero-padded DD-MM-YYYY, matching the folder names in the bucket."""
+    try:
+        parsed = datetime.strptime(value, DAY_FORMAT)
+    except ValueError:
+        raise ValueError(f"Invalid day {value!r}, expected DD-MM-YYYY (e.g. 01-04-2022)") from None
+    if parsed.strftime(DAY_FORMAT) != value:
+        raise ValueError(f"Invalid day {value!r}, expected DD-MM-YYYY (e.g. 01-04-2022)")
+    return value
+
+
 def list_day_keys(s3, bucket: str, city_prefix: str, day: str | None = None) -> tuple[str, list[str]]:
-    """Return (day, sorted keys) for the given DD-MM-YYYY day, or for the earliest available day."""
+    """Return (day, sorted keys) for the given DD-MM-YYYY day, or for the earliest available day.
+
+    Raises ValueError if the day has no files.
+    """
     if day is None:
         days = [p[len(city_prefix) :].rstrip("/") for p in _list_prefixes(s3, bucket, city_prefix)]
         if not days:
             raise ValueError(f"No day folders under s3://{bucket}/{city_prefix}")
         day = min(days, key=lambda d: datetime.strptime(d, DAY_FORMAT))
     else:
-        datetime.strptime(day, DAY_FORMAT)  # validate format early
-    return day, _list_keys(s3, bucket, f"{city_prefix}{day}/")
+        validate_day(day)
+    keys = _list_keys(s3, bucket, f"{city_prefix}{day}/")
+    if not keys:
+        raise ValueError(f"No files for {day} under s3://{bucket}/{city_prefix}")
+    return day, keys
 
 
 def local_path(root: Path, source: str, station_id: str, key: str) -> Path:

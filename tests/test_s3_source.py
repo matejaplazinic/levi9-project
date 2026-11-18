@@ -83,6 +83,30 @@ def test_list_day_keys_uses_given_day(s3):
     )
 
 
+@pytest.mark.parametrize("bad", ["1-4-2022", "01-4-2022", "2022-04-01", "31-02-2022", ""])
+def test_validate_day_requires_zero_padded_dd_mm_yyyy(bad):
+    with pytest.raises(ValueError, match="DD-MM-YYYY"):
+        s3_source.validate_day(bad)
+
+
+def test_list_day_keys_rejects_non_padded_day_before_listing(s3):
+    client, stub = s3  # no stubbed responses: any S3 call would fail the test
+    with pytest.raises(ValueError, match="DD-MM-YYYY"):
+        s3_source.list_day_keys(client, BUCKET, f"weather/{NS_NAME}/", day="1-4-2022")
+
+
+def test_list_day_keys_raises_when_day_has_no_files(s3):
+    client, stub = s3
+    prefix = f"weather/{NS_NAME}/"
+    stub.add_response(
+        "list_objects_v2",
+        {"KeyCount": 0},
+        {"Bucket": BUCKET, "Prefix": f"{prefix}01-01-2022/"},
+    )
+    with pytest.raises(ValueError, match="01-01-2022"):
+        s3_source.list_day_keys(client, BUCKET, prefix, day="01-01-2022")
+
+
 def test_local_path_uses_station_id_and_csv_extension(tmp_path):
     key = f"pollution/{NS_NAME}/01-04-2022/levi9-hack9-pollution-firehose-2-xyz"
     assert s3_source.local_path(tmp_path, "pollution", "35120", key) == (
