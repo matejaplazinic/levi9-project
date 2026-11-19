@@ -12,7 +12,13 @@ current ticket's plan and task list; older versions live in git history.
 - AWS account access goes through the SSO profile **`mateja`**. The working region is **`eu-north-1`**. SSO itself lives in `eu-west-1`, which is already set in `~/.aws/config`.
 - **Source data** is in bucket `levi9-praksa-2026-data` (eu-north-1, **read-only for us**). The folders are `pollution/`, `weather/`, `sensor/` and `pollution-reduced/`.
 - **Our data** goes into the bucket created by `DataLakeStack`, under the prefixes `bronze/` (raw copies), `silver/` (cleaned) and `gold/` (aggregated, joined). The prefixes are a convention (`infra/data_lake_stack.py: DATA_PREFIXES`), not folders. CloudFormation generates the bucket name; read it from the stack output `DataBucketName`.
+- The source bucket is in our AWS account and is not KMS-encrypted, so plain IAM permissions on our Lambda role are enough to read it (confirmed live in DP-4; no bucket policy change is needed).
 - The tourist API token is in Secrets Manager as `tourist_estimate_token` (eu-north-1). Only the secret's *name* appears in code.
+
+### Current state (update at the end of every ticket)
+- After DP-4 (2026-11-19): `DataLakeStack` is **deployed** and kept for DP-5. `bronze/pollution/` and `bronze/weather/`
+  hold all 2051 + 2052 Novi Sad files. The last DP-4 commit only changed a comment in `handler.py` and was not deployed,
+  so `cdk diff` shows a change to `BronzeCopyFunction`; that is expected.
 
 ## Commands
 
@@ -36,6 +42,9 @@ aws lambda invoke --profile mateja --region eu-north-1 --function-name <BronzeCo
 
 Read `<BronzeCopyFunctionName>` and `DataBucketName` from the `cdk deploy` outputs (or `aws cloudformation describe-stacks --stack-name DataLakeStack`).
 The AWS CLI's `--output text` on Windows ends lines with `\r`; strip it before comparing listings.
+The bronze copy Lambda logs to the stack's own log group `DataLakeStack-BronzeCopyLogs...` (7-day retention), **not**
+`/aws/lambda/<function>`. Find it with `aws logs describe-log-groups --log-group-name-prefix DataLakeStack-BronzeCopyLogs`.
+In Git Bash, set `MSYS_NO_PATHCONV=1` for any CLI argument that starts with `/`, or Git Bash rewrites it into a Windows path.
 
 `cdk.json` runs the app with `.venv\Scripts\python.exe app.py`. That path is Windows-only on purpose, because the CDK CLI runs the app through `cmd`.
 
