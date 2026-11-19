@@ -31,7 +31,11 @@ cdk diff --profile mateja
 cdk deploy --profile mateja                          # ask the user first
 cdk destroy --profile mateja --force                 # ask the user first
 .venv/Scripts/python -m src.fetch_sources --profile mateja --station 35120 --files 5 --skip-tourist   # DP-2 sample download
+aws lambda invoke --profile mateja --region eu-north-1 --function-name <BronzeCopyFunctionName> --cli-read-timeout 400 out.json   # DP-4 bronze copy
 ```
+
+Read `<BronzeCopyFunctionName>` and `DataBucketName` from the `cdk deploy` outputs (or `aws cloudformation describe-stacks --stack-name DataLakeStack`).
+The AWS CLI's `--output text` on Windows ends lines with `\r`; strip it before comparing listings.
 
 `cdk.json` runs the app with `.venv\Scripts\python.exe app.py`. That path is Windows-only on purpose, because the CDK CLI runs the app through `cmd`.
 
@@ -47,8 +51,14 @@ You may see `Error: ENOTEMPTY ... jsii-kernel-*` at the end of a pytest or cdk r
 - `infra/` and `app.py` hold the CDK v2 Python app.
   - There is currently one stack, `DataLakeStack`. It has the bucket with SSE-S3 encryption, BLOCK_ALL public access, ACLs disabled and a TLS-only policy.
   - It also uses `RemovalPolicy.DESTROY` with `auto_delete_objects`, which adds a Lambda, an IAM role and a custom resource so that `cdk destroy` can empty the bucket.
+  - It also holds the DP-4 bronze copy Lambda (below). Its settings come from the `bronze_copy` context in `cdk.json` (source bucket, station ID, city name, source folders); city and station never appear in `infra/` or `lambdas/` code, and tests check that.
   - `docs/infra.md` explains every permission.
-- `tests/` uses botocore `Stubber` and fake HTTP sessions for `src/`, and `aws_cdk.assertions.Template` for `infra/`. No test touches AWS.
+- `lambdas/bronze_copy/handler.py` (DP-4) copies the station's files from `pollution/` and `weather/` of the source bucket to `bronze/<full source key>` in our bucket.
+  - Config only from env vars: `SOURCE_BUCKET`, `TARGET_BUCKET`, `STATION_ID`, `CITY_NAME` (logs only), `SOURCE_FOLDERS` (comma-separated).
+  - Idempotent: lists bronze once and skips existing keys; a second run copies 0. Server-side `copy_object` on 16 threads (~100 s for ~4,100 files; 5-minute timeout).
+  - Needs only `boto3` (in the Lambda runtime), so the asset is the folder itself with no bundling. `find_station_prefix` intentionally mirrors `src/s3_source.find_city_prefix`.
+  - No trigger: manual invoke only. Its role can only list/read `pollution/*` and `weather/*` in the source bucket and list/put under `bronze/*` in ours.
+- `tests/` uses botocore `Stubber` and fake HTTP sessions for `src/`, `moto` (`mock_aws`) for `lambdas/`, and `aws_cdk.assertions.Template` for `infra/`. No test touches AWS.
 - `docs/data-profile.md` is the profile of the source data. Read it before writing any ingestion or transform code.
 
 ### Source data gotchas (details in `docs/data-profile.md`)
@@ -65,7 +75,8 @@ You may see `Error: ENOTEMPTY ... jsii-kernel-*` at the end of a pytest or cdk r
 - Ticket workflow: spec in `tasks/DP-<n>.md` (`/agent-skills:spec`) → `/plan` (`tasks/plan.md`, `tasks/todo.md`) → user
   reads the plan → `/build` one task at a time (TDD) → `/agent-skills:review` → PR. Wait for the user's approval
   between phases.
-- **Commits and PR titles are in English and start with the ticket id**, e.g. `DP-3: Add S3 bucket to CDK stack`. Use one commit per task.
+- **Commits and PR titles are in English and start with the ticket id**, e.g. `DP-3: Add S3 bucket to CDK stack`. Use one commit per task, made as soon as that task is done.
+- **Every ticket's last task before review updates `CLAUDE.md`** with what the ticket added (architecture, commands, gotchas, rules).
 - Branch `feature/DP-<n>-<slug>` from `develop`. PRs go into `develop`, never into `main`. Ask before pushing or opening a PR.
 - **Never write secrets into code, config, logs or test fixtures.** That includes tokens, keys and `.env` contents. Read the token into memory only, from Secrets Manager, and never print it or put it in error messages. Do not hardcode the AWS account ID either: CDK takes it from the profile (`CDK_DEFAULT_ACCOUNT`); a test checks `app.py`, `cdk.json` and `infra/`.
 - Run `ruff check .`, `ruff format --check .` and `pytest` before every commit.
@@ -74,3 +85,18 @@ You may see `Error: ENOTEMPTY ... jsii-kernel-*` at the end of a pytest or cdk r
   construct ID), all its data is deleted. Stop and ask.
 - Never write to or delete from `levi9-praksa-2026-data`. Never modify the `TouristApiStack` or `CDKToolkit` stacks. Never run `cdk bootstrap` (the mentor already did). The `mateja` role is an admin role, but these limits still apply.
 - Ask before adding dependencies. Runtime dependencies go in `requirements.txt`, dev tools in `requirements-dev.txt`.
+
+## AWS cost
+
+Always pick the cheapest option that does the job.
+
+- **Cheap (cents):** Lambda, S3 with our data (~40 MB), Athena over small data, EventBridge rules, Secrets Manager.
+  The base project should stay in this range.
+- **Infinite loops:** a Lambda triggered by an S3 event must never write to the bucket + prefix that triggers it,
+  or it re-triggers itself forever.
+- **Glue / PySpark jobs** (advanced task) are billed per minute. Run them manually; never put them on a schedule
+  without the user's agreement.
+- **Athena** bills per data scanned. Even though our data is small, use partitions and `LIMIT` while exploring.
+- **Always-on services** (EC2, RDS, NAT Gateway, OpenSearch, etc.) are not needed for this project. Do not create
+  them without asking.
+- **Forgotten resources** cost money even when idle. Remove anything that is no longer used.

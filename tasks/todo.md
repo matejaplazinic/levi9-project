@@ -60,7 +60,7 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
       (113 MB); 2. invoke `copied 0` za 8 s.
     - Bronze = izvor: 2051 + 2052 fajla, isti ključ, ETag i veličina za svaki fajl; van `bronze/` nema objekata.
 
-- [ ] **T7: CLAUDE.md ažuriranje** (uvek poslednji korak pre review-a)
+- [x] **T7: CLAUDE.md ažuriranje** (uvek poslednji korak pre review-a)
   - Acceptance: arhitektura (`lambdas/bronze_copy`, env varijable, bronze raspored ključeva), komanda za invoke,
     odeljak **AWS cost** (iz `git stash` "AWS cost rules for CLAUDE.md"), pravilo da se `CLAUDE.md` ažurira na kraju
     svakog tiketa.
