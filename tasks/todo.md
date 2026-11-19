@@ -18,7 +18,7 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
     `tests/lambdas/test_bronze_copy.py`, `requirements-dev.txt` (`moto[s3]`) · Scope: M
   - Deps: Gate
 
-- [ ] **T3: Konfiguracija iz env varijabli i svi folderi**
+- [x] **T3: Konfiguracija iz env varijabli i svi folderi**
   - Acceptance: `handler(event, context)` čita `SOURCE_BUCKET`, `TARGET_BUCKET`, `STATION_ID`, `CITY_NAME`,
     `SOURCE_FOLDERS`; prolazi kroz sve foldere i vraća `{folder: {copied, skipped}}`; nedostajuća varijabla →
     jasna greška sa imenom varijable; u kodu Lambde nema `35120` ni `Novi Sad` (test).
@@ -27,7 +27,7 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
   - Deps: T2
 
 ### Checkpoint A (posle T3)
-- [ ] `ruff check .`, `ruff format --check .`, `pytest` zeleno; handler pokriva kriterijume 1, 2 i 4 u moto testovima.
+- [x] `ruff check .`, `ruff format --check .`, `pytest` zeleno; handler pokriva kriterijume 1, 2 i 4 u moto testovima.
 
 - [ ] **T4: CDK Lambda sa env varijablama i dozvolama**
   - Acceptance: jedna `AWS::Lambda::Function` (Python 3.13, 256 MB, 5 min) sa 5 env varijabli; vrednosti iz

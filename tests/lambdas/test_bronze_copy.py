@@ -1,4 +1,6 @@
+import re
 import unicodedata
+from pathlib import Path
 
 import boto3
 import pytest
@@ -94,3 +96,75 @@ def test_source_bucket_is_not_modified(s3):
 def test_unknown_station_raises(s3):
     with pytest.raises(ValueError, match="Station 99999 not found"):
         handler.copy_source(s3, SOURCE, TARGET, "pollution", "99999")
+
+
+WEATHER_KEYS = [f"weather/{NS}/30-03-2022/file-w1", f"weather/{NS}/30-03-2022/file-w2"]
+ENV = {
+    "SOURCE_BUCKET": SOURCE,
+    "TARGET_BUCKET": TARGET,
+    "STATION_ID": "35120",
+    "CITY_NAME": "Novi Sad",
+    "SOURCE_FOLDERS": "pollution, weather",
+}
+
+
+@pytest.fixture
+def lambda_env(monkeypatch, s3):
+    for name, value in ENV.items():
+        monkeypatch.setenv(name, value)
+    for key in WEATHER_KEYS:
+        s3.put_object(Bucket=SOURCE, Key=key, Body=b"weather")
+    return s3
+
+
+def test_handler_copies_all_configured_folders(lambda_env):
+    result = handler.handler({}, None, s3=lambda_env)
+
+    assert result == {"pollution": {"copied": 3, "skipped": 0}, "weather": {"copied": 2, "skipped": 0}}
+    assert _keys(lambda_env, TARGET, "bronze/pollution/") == sorted(f"bronze/{k}" for k in NS_KEYS)
+    assert _keys(lambda_env, TARGET, "bronze/weather/") == sorted(f"bronze/{k}" for k in WEATHER_KEYS)
+
+
+def test_handler_second_run_copies_nothing(lambda_env):
+    handler.handler({}, None, s3=lambda_env)
+
+    result = handler.handler({}, None, s3=lambda_env)
+
+    assert result == {"pollution": {"copied": 0, "skipped": 3}, "weather": {"copied": 0, "skipped": 2}}
+
+
+def test_handler_creates_its_own_client_when_none_given(lambda_env, monkeypatch):
+    monkeypatch.setenv("AWS_DEFAULT_REGION", REGION)
+
+    assert handler.handler({}, None)["weather"]["copied"] == 2
+
+
+def test_load_config_parses_folders():
+    config = handler.load_config({**ENV, "SOURCE_FOLDERS": " pollution/ ,weather,, "})
+
+    assert config.source_folders == ("pollution", "weather")
+    assert config.station_id == "35120"
+
+
+@pytest.mark.parametrize("name", handler.ENV_VARS)
+def test_load_config_names_missing_variable(name):
+    env = {k: v for k, v in ENV.items() if k != name}
+
+    with pytest.raises(ValueError, match=name):
+        handler.load_config(env)
+
+
+def test_load_config_rejects_empty_folder_list():
+    with pytest.raises(ValueError, match="SOURCE_FOLDERS"):
+        handler.load_config({**ENV, "SOURCE_FOLDERS": " , "})
+
+
+def test_load_config_refuses_to_write_into_source_bucket():
+    with pytest.raises(ValueError, match="read-only"):
+        handler.load_config({**ENV, "TARGET_BUCKET": SOURCE})
+
+
+def test_lambda_code_has_no_hardcoded_city_or_station():
+    root = Path(handler.__file__).resolve().parent
+    offenders = [p.name for p in root.rglob("*.py") if re.search(r"35120|Novi Sad", p.read_text(encoding="utf-8"))]
+    assert offenders == []
