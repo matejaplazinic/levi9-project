@@ -4,7 +4,7 @@ import os
 
 import aws_cdk as cdk
 
-from infra.data_lake_stack import DataLakeStack
+from infra.data_lake_stack import BronzeCopyConfig, DataLakeStack
 
 REGION = "eu-north-1"
 
@@ -12,6 +12,8 @@ app = cdk.App()
 DataLakeStack(
     app,
     "DataLakeStack",
+    # Station, city and source folders are configuration (cdk.json context), not code.
+    bronze_copy=BronzeCopyConfig.from_context(app.node.get_context("bronze_copy")),
     # The account comes from the AWS profile used by the CDK CLI; it is never written in code.
     env=cdk.Environment(account=os.environ.get("CDK_DEFAULT_ACCOUNT"), region=REGION),
 )

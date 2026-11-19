@@ -1,7 +1,14 @@
 {
   "app": ".venv\\Scripts\\python.exe app.py",
   "watch": {
-    "include": ["app.py", "infra/**"]
+    "include": ["app.py", "infra/**", "lambdas/**"]
   },
-  "context": {}
+  "context": {
+    "bronze_copy": {
+      "source_bucket": "levi9-praksa-2026-data",
+      "station_id": "35120",
+      "city_name": "Novi Sad",
+      "source_folders": ["pollution", "weather"]
+    }
+  }
 }
