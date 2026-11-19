@@ -1,68 +1,58 @@
-# Plan: DP-3 Data lake bucket (CDK)
+# Plan: DP-4 Bronze sloj (pollution + weather)
 
-Spec: [DP-3.md](DP-3.md)
+Spec: [DP-4.md](DP-4.md)
 
-## Kontekst
-Tiket DP-3 traži prvi deo infrastrukture kao kod: CDK (Python) stack sa jednim S3 bucketom
-(SSE-S3, blokiran javni pristup, samo HTTPS) za podatke pod `bronze/`, `silver/`, `gold/`.
-Uz to: pytest + ruff, CLAUDE.md (/init + context-engineering) i živi `cdk deploy` → provera → `cdk destroy`.
-Spec je odobren: `tasks/DP-3.md`. Grana `feature/DP-3-infra` je već napravljena iz `origin/develop`
-(upstream uklonjen), PR #1 (DP-2) je već u `develop`.
+## Pregled
+Lambda (`lambdas/bronze_copy/`) kopira fajlove stanice `35120` iz `levi9-praksa-2026-data/{pollution,weather}/`
+u `bronze/` našeg bucketa, preskače postojeće i dobija svu konfiguraciju kroz env varijable. CDK je dodaje u
+`DataLakeStack`, sa least-privilege dozvolama i bez okidača. Testovi: `moto` za handler, `Template` za CDK.
 
-Prvi korak posle odobrenja: plan i taskove upisati u `tasks/plan.md` i `tasks/todo.md` (zamenjuju DP-2
-verzije; DP-2 verzije ostaju u git istoriji), pa raditi `/build` task po task, jedan commit po tasku.
+## Preduslov
+Ispunjen: DP-3 (PR #2) je spojen u `develop`, a DP-4 grana je fast-forwardovana na `origin/develop` (`f6a7b39`).
 
-## Taskovi (redom, svaki = jedan commit `DP-3: ...`)
+## Zavisnosti
+```
+T1 spec/plan ─► [DP-3 merge] ─► T2 handler (jedan izvor, skip) ─► T3 env konfiguracija + više foldera
+                                                                        │
+                                                    T4 CDK Lambda + dozvole ◄┘
+                                                        │
+                                  T5 docs/infra.md ◄────┤
+                                                        ▼
+                                          T6 živi deploy + 2× invoke ─► T7 CLAUDE.md ─► T8 review + PR
+```
 
-**T1: Alati i konfiguracija**
-- `npm install -g aws-cdk` (odobreno u specu); u `.venv`: `aws-cdk-lib`, `constructs`, `ruff`.
-- `requirements.txt` += `aws-cdk-lib>=2.170,<3`, `constructs>=10,<11`; novi `requirements-dev.txt`
-  (`-r requirements.txt`, `pytest`, `ruff`) — pytest se seli iz requirements.txt u dev.
-- `pyproject.toml`: `[tool.ruff]` line-length 120, target py312, lint `E,F,I,B,UP`;
-  `[tool.pytest.ini_options]` testpaths `tests`.
-- `.gitignore` += `cdk.out/`, `.ruff_cache/`, `node_modules/`.
-- Verify: `cdk --version`, `ruff --version`, `py -m pytest -q` (63 zeleno).
-- Rizik: Python 3.14 + jsii. Ako `import aws_cdk` ne radi na 3.14, stajem i pitam (opcija: venv na 3.12/3.13).
+## Arhitektonske odluke
+- Lambda kod u zasebnom paketu `lambdas/bronze_copy/handler.py`, samo stdlib + `boto3` (već postoji u Lambda
+  runtime-u) → nema bundlinga. Mala funkcija za pronalaženje foldera po ID-u je namerno kopirana iz
+  `src/s3_source.py: find_city_prefix` (ista logika), jer `src/` vuče `requests` i nije deo Lambda paketa.
+- Ključ u bronze = `bronze/` + izvorni ključ. Skup postojećih ključeva se pravi jednim paginiranim LIST-om.
+- `copy_object` server-side; bez paralelizacije u V1 (~4100 fajlova staje u timeout od 5 min; meri se u T6).
+- Runtime `PYTHON_3_13`, 256 MB, timeout 5 min, log grupa sa retencijom 1 nedelja + `DESTROY`.
+- Konfiguracija (`STATION_ID`, `CITY_NAME`, `SOURCE_FOLDERS`, `SOURCE_BUCKET`) u `cdk.json` context-u;
+  `TARGET_BUCKET` iz `bucket.bucket_name`.
+- Dodavanje Lambde ne menja construct ID bucketa → `cdk diff` ne sme da pokaže replace bucketa.
 
-**T2: Ruff čist na postojećem kodu**
-- `ruff check . --fix` + `ruff format .` na `src/`, `tests/`; ručno rešiti ostatak bez promene ponašanja.
-- Verify: `ruff check .`, `ruff format --check .`, `pytest` (63 zeleno).
+## Taskovi (svaki = jedan commit `DP-4: ...`)
+1. **T1** Spec, plan i lista taskova.
+2. **T2** Handler: kopira jedan izvor, preskače postojeće (moto testovi).
+3. **T3** Konfiguracija iz env varijabli, svi folderi iz `SOURCE_FOLDERS`, jasne greške.
+4. **T4** CDK: Lambda u `DataLakeStack` sa env varijablama i dozvolama (Template testovi).
+5. **T5** `docs/infra.md`: nova Lambda, rola, svaka dozvola, kontrolno pitanje.
+6. **T6** Živi deploy, 2× invoke, provera (pitam pre deploy-a i pre eventualnog destroy-a).
+7. **T7** `CLAUDE.md` ažuriranje (uvek poslednji korak pre review-a).
+8. **T8** `/agent-skills:review` i PR ka `develop` (pitam pre pusha).
 
-**T3: DataLakeStack (TDD)**
-- Prvo test `tests/infra/__init__.py` + `tests/infra/test_data_lake_stack.py` (`aws_cdk.assertions.Template`):
-  AES256 enkripcija, 4× public access block `true`, `OwnershipControls BucketOwnerEnforced`, Deny za
-  `aws:SecureTransport=false`, `DeletionPolicy: Delete`, `Custom::S3AutoDeleteObjects`, output
-  `DataBucketName`, `DATA_PREFIXES == ("bronze/","silver/","gold/")`, nema hardkodovanog account ID-a. → crveno.
-- Zatim `infra/__init__.py`, `infra/data_lake_stack.py` (kod iz speca + `CfnOutput`), `app.py`
-  (`env=Environment(account=os.environ["CDK_DEFAULT_ACCOUNT"], region="eu-north-1")`), `cdk.json`
-  (`"app": ".venv/Scripts/python app.py"`). → zeleno.
-- Verify: `pytest`, `ruff`, `cdk synth --profile mateja` (samo bucket, policy, auto-delete Lambda + rola, custom resource, metadata).
+Detalji, acceptance i verify po tasku: [todo.md](todo.md).
 
-**T4: CLAUDE.md**
-- Pokrenuti `/init` skill, pa doraditi uz `context-engineering` skill: projekat, Novi Sad (35120), `eu-north-1`,
-  izvorni bucket `levi9-praksa-2026-data` (read-only), AWS profil `mateja` + `aws sso login`, komande
-  (pip/ruff/pytest/cdk), struktura (`src/`, `infra/`, `tests/`), bronze/silver/gold konvencija,
-  pravila: commit `DP-<n>:` na engleskom, grane `feature/DP-<n>-...` → PR u `develop`, tajne nikad u kod/log.
-- Verify: pročitati i proveriti prema kriterijumima iz speca.
+## Rizici
+| Rizik | Uticaj | Mitigacija |
+|---|---|---|
+| DP-3 nije spojen u `develop` | Visok (blokira T2+) | Čekamo merge, pa `git merge origin/develop` |
+| Izvorni bucket je u drugom nalogu / bucket policy ne dozvoljava našu rolu | Visok | T6 prvo proba jedan invoke; ako `AccessDenied`, stajemo i pitamo mentora |
+| Timeout kod ~4100 kopija | Srednji | Idempotentno: novo pokretanje nastavlja; po potrebi thread pool u zasebnom tasku |
+| Filter stanice ne radi → kopira sve stanice | Srednji (trošak) | Test sa drugom stanicom (`1297`) koja ne sme da se kopira |
+| `cdk diff` pokaže replace bucketa | Visok (brisanje podataka) | Stop i pitam |
+| moto i jsii na Pythonu 3.14 | Nizak | Proveriti u T2 instalacijom; ako ne radi, pitam |
 
-**T5: docs/infra.md — kontrolno pitanje**
-- Iz `cdk.out/DataLakeStack.template.json`: šta pravi stack i šta radi svaka dozvola
-  (bucket policy: SSL deny + dozvole auto-delete roli; Lambda rola `AWSLambdaBasicExecutionRole`;
-  CDK bootstrap role koje koristi deploy). Bez account ID-a.
-
-**T6: Živi deploy/destroy** (pitam pre deploy i pre destroy)
-- `aws sso login` po potrebi → `cdk diff` → **pitam** → `cdk deploy` → provera CLI-jem
-  (`get-bucket-encryption`, `get-public-access-block`, `get-bucket-policy`) + korisnik gleda konzolu →
-  **pitam** → `cdk destroy --force` → provera da stack i bucket ne postoje.
-
-**T7: Review i PR**
-- `/agent-skills:review` na diff `origin/develop...HEAD`, popraviti nalaze.
-- **Pitam** → push `-u origin feature/DP-3-infra`, PR ka `develop`, naslov `DP-3: ...`.
-
-## Ključni fajlovi
-`app.py`, `cdk.json`, `infra/data_lake_stack.py`, `tests/infra/test_data_lake_stack.py`, `pyproject.toml`,
-`requirements*.txt`, `.gitignore`, `CLAUDE.md`, `docs/infra.md`, `tasks/plan.md`, `tasks/todo.md`.
-
-## Verifikacija (end-to-end)
-`ruff check .` · `ruff format --check .` · `pytest` (63 + novi) · `cdk synth` · `cdk deploy` + provera
-bucketa · `cdk destroy` bez ručnih koraka · CLAUDE.md pokriva sve iz speca.
+## Otvorena pitanja
+- Posle T6: da li stack ostaje deployovan za DP-5 ili radimo `cdk destroy`? (Pitam u T6.)
