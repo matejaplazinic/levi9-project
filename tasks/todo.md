@@ -67,7 +67,7 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
   - Verify: pregled; `pytest` (test za account ID i dalje zelen).
   - Files: `CLAUDE.md` · Scope: XS · Deps: T6
 
-- [ ] **T8: Review i PR**
+- [x] **T8: Review i PR**
   - Acceptance: `/agent-skills:review` nalazi rešeni; pročitana tabela Common Rationalizations iz
     `incremental-implementation`; PR ka `develop`, naslov `DP-4: ...` (pitam pre pusha).
   - Verify: ruff, pytest, `cdk synth` zeleno na finalnom commitu.
