@@ -101,7 +101,8 @@ def copy_source(s3, source_bucket: str, target_bucket: str, folder: str, station
         s3.copy_object(Bucket=target_bucket, Key=BRONZE_PREFIX + key, CopySource={"Bucket": source_bucket, "Key": key})
 
     # One copy takes ~80 ms, almost all of it waiting on S3, so threads cut ~4,100 copies from ~5.5 min to seconds.
-    # list() re-raises the first failed copy; files copied before it stay in bronze and are skipped on the next run.
+    # map() hands every copy to the pool up front; on a failure the pool still finishes the other copies, then list()
+    # re-raises the error. Only the failed files are missing, and the next run copies just those.
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         list(pool.map(copy, to_copy))
 
