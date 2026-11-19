@@ -202,3 +202,19 @@ def test_failed_copy_is_raised_and_rerun_finishes(s3, monkeypatch):
 
     assert result["copied"] >= 1
     assert _keys(s3, TARGET) == sorted(f"bronze/{k}" for k in NS_KEYS)
+
+
+def test_two_folders_with_same_station_id_raise(s3):
+    renamed = "35120 - Novo ime, Serbia"
+    s3.put_object(Bucket=SOURCE, Key=f"pollution/{renamed}/30-03-2022/file-z", Body=b"z")
+
+    with pytest.raises(ValueError, match="has 2 folders"):
+        handler.copy_source(s3, SOURCE, TARGET, "pollution", "35120")
+    assert _keys(s3, TARGET) == []
+
+
+def test_client_config_matches_threads_and_retries():
+    config = handler.client_config()
+
+    assert config.max_pool_connections == handler.MAX_WORKERS
+    assert config.retries == {"mode": "standard", "max_attempts": 10}

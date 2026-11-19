@@ -96,6 +96,16 @@ Code: [`lambdas/bronze_copy/handler.py`](../lambdas/bronze_copy/handler.py). Pyt
   (`aws lambda invoke --function-name <BronzeCopyFunctionName> --profile mateja out.json`). It has no S3 event
   or schedule, so it can never re-trigger itself on its own writes.
 - **Result:** `{"pollution": {"copied": n, "skipped": m}, "weather": {...}}`.
+- **Speed:** copies run on 16 threads (boto3 pool of 16 connections, standard retries with up to 10 attempts).
+  The first full run for Novi Sad (~4,100 files) took ~100 s of the 5-minute timeout; a run with nothing to copy ~8 s.
+
+**Known limitations**
+- Files are skipped **by key only**. If the source ever rewrites a file under the same key, bronze keeps the old
+  version. That matches the ticket ("if it exists, skip it").
+- Two invocations at the same time would both copy the missing files (same bytes, double the requests). Run it once at
+  a time; `reserved_concurrent_executions=1` was left out because reserving concurrency fails on accounts with a low
+  concurrency limit.
+- If two source folders share the station ID (e.g. after a rename), the run fails with an error instead of picking one.
 
 **What happens if the Lambda runs twice? (control question)** Before copying, it lists the station's keys that
 already exist in `bronze/` and skips them. The second run therefore copies nothing (`copied = 0`) and only picks up

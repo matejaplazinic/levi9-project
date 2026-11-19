@@ -29,7 +29,7 @@ Prvi deo pipeline-a. Lambda kopira sirove fajlove za Novi Sad (stanica `35120`) 
   `LIST`-om bronze prefiksa (skup ključeva), ne `HEAD`-om po fajlu.
 - **Okidač:** samo ručno pokretanje (`aws lambda invoke`). Bez S3 eventa i bez rasporeda → nema petlje.
 - **Dozvole (least privilege):** izvor: `s3:ListBucket` + `s3:GetObject` samo na `pollution/*` i `weather/*`;
-  naš bucket: list + read + put samo na `bronze/*`. Nikakvo pisanje u izvorni bucket.
+  naš bucket: list + put samo na `bronze/*` (bez read i delete). Nikakvo pisanje u izvorni bucket.
 - **Nova dev zavisnost:** `moto[s3]` u `requirements-dev.txt` (odobreno).
 - **Trošak:** ~4100 fajlova (~1,5 MB) → prvo pokretanje ~$0,02–0,03, svako sledeće ≈ $0.
 

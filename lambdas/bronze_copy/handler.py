@@ -74,12 +74,18 @@ def find_station_prefix(s3, bucket: str, folder: str, station_id: str) -> str:
     """Return the station's folder prefix (e.g. 'pollution/<id> - <name>/') by its numeric ID.
 
     Same logic as src/s3_source.find_city_prefix, kept here so the Lambda package needs only boto3.
+    More than one folder with the same ID (e.g. after a station rename) is an error, not a silent pick.
     """
-    for prefix in _list_prefixes(s3, bucket, f"{folder}/"):
-        name = prefix[len(folder) + 1 :].rstrip("/")
-        if name.split(" - ", 1)[0] == station_id:
-            return prefix
-    raise ValueError(f"Station {station_id} not found in s3://{bucket}/{folder}/")
+    matches = [
+        prefix
+        for prefix in _list_prefixes(s3, bucket, f"{folder}/")
+        if prefix[len(folder) + 1 :].rstrip("/").split(" - ", 1)[0] == station_id
+    ]
+    if not matches:
+        raise ValueError(f"Station {station_id} not found in s3://{bucket}/{folder}/")
+    if len(matches) > 1:
+        raise ValueError(f"Station {station_id} has {len(matches)} folders in s3://{bucket}/{folder}/")
+    return matches[0]
 
 
 def copy_source(s3, source_bucket: str, target_bucket: str, folder: str, station_id: str) -> dict[str, int]:
@@ -104,11 +110,16 @@ def copy_source(s3, source_bucket: str, target_bucket: str, folder: str, station
     return result
 
 
+def client_config() -> BotoConfig:
+    # One HTTP connection per copy thread (the default pool has only 10), and standard retries with backoff
+    # so an occasional S3 SlowDown/503 under 16 parallel copies does not abort the run.
+    return BotoConfig(max_pool_connections=MAX_WORKERS, retries={"mode": "standard", "max_attempts": 10})
+
+
 def handler(event, context, s3=None) -> dict[str, dict[str, int]]:
     """Lambda entry point. The event is ignored; everything comes from environment variables."""
     config = load_config()
-    # One HTTP connection per copy thread (the default pool has only 10).
-    s3 = s3 or boto3.client("s3", config=BotoConfig(max_pool_connections=MAX_WORKERS))
+    s3 = s3 or boto3.client("s3", config=client_config())
     log.info("Copying station %s (%s) folders %s to bronze", config.station_id, config.city_name, config.source_folders)
     return {
         folder: copy_source(s3, config.source_bucket, config.target_bucket, folder, config.station_id)
