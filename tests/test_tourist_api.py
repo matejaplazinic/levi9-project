@@ -33,9 +33,7 @@ class FakeSession:
 
 @pytest.fixture
 def sm():
-    client = boto3.client(
-        "secretsmanager", region_name="eu-north-1", aws_access_key_id="x", aws_secret_access_key="x"
-    )
+    client = boto3.client("secretsmanager", region_name="eu-north-1", aws_access_key_id="x", aws_secret_access_key="x")
     with Stubber(client) as stub:
         yield client, stub
 
