@@ -9,7 +9,7 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
 
 > **Gate (ispunjen):** DP-3 spojen u `develop`, DP-4 grana fast-forwardovana na `origin/develop`.
 
-- [ ] **T2: Handler kopira jedan izvor i preskače postojeće**
+- [x] **T2: Handler kopira jedan izvor i preskače postojeće**
   - Acceptance: `copy_source(s3, source_bucket, target_bucket, folder, station_id)` kopira sve ključeve stanice
     u `bronze/<ključ>` sa identičnim sadržajem; drugi poziv vraća `copied=0`; fajlovi stanice `1297` se ne kopiraju;
     nepostojeća stanica → `ValueError`.
