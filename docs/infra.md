@@ -13,9 +13,13 @@ To see the exact template, run `cdk synth --profile mateja` and open `cdk.out/Da
 | `CustomS3AutoDeleteObjectsCustomResourceProviderRole` | `AWS::IAM::Role` | Role used by the Lambda that empties the bucket. |
 | `CustomS3AutoDeleteObjectsCustomResourceProviderHandler` | `AWS::Lambda::Function` | Lambda that deletes all objects on `cdk destroy`, so CloudFormation can delete the bucket. |
 | `DataBucketAutoDeleteObjectsCustomResource` | `Custom::S3AutoDeleteObjects` | The "trigger" that calls that Lambda when the bucket is deleted. |
+| `BronzeCopyFunction` | `AWS::Lambda::Function` | DP-4: copies the station's raw files from the source bucket into `bronze/` (see [Bronze copy Lambda](#bronze-copy-lambda-dp-4)). |
+| `BronzeCopyFunctionServiceRole` | `AWS::IAM::Role` | Execution role of the bronze copy Lambda. |
+| `BronzeCopyFunctionServiceRoleDefaultPolicy` | `AWS::IAM::Policy` | The S3 permissions of that role (statement 6 below). |
+| `BronzeCopyLogs` | `AWS::Logs::LogGroup` | The Lambda's CloudWatch logs, kept for 7 days and deleted with the stack. |
 | `CDKMetadata` | `AWS::CDK::Metadata` | Anonymous CDK version data. Has no effect on access. |
 
-The `DataBucketName` output gives the generated bucket name.
+The `DataBucketName` output gives the generated bucket name, and `BronzeCopyFunctionName` gives the Lambda's name.
 
 ## Bucket settings
 
@@ -63,3 +67,40 @@ These permissions apply **only to this bucket**, not to other buckets in the acc
 - **lookup role**: reads account information (this stack does not use it).
 
 We do not change these roles and we do not run `cdk bootstrap`.
+
+### 6. IAM role of the bronze copy Lambda (DP-4)
+- **Trust policy:** only `lambda.amazonaws.com` can assume it.
+- **Managed policy** `AWSLambdaBasicExecutionRole`: CloudWatch logs only, as in statement 3.
+- **Inline policy** (`BronzeCopyFunctionServiceRoleDefaultPolicy`), built from the `bronze_copy` context in `cdk.json`:
+
+| Sid | Action | Resource | Condition | Why |
+|---|---|---|---|---|
+| `ListSourceFolders` | `s3:ListBucket` | `levi9-praksa-2026-data` | `s3:prefix` like `pollution/*`, `weather/*` | Find the station folder by ID and list its files. Other folders of the source bucket cannot be listed. |
+| `ReadSourceFiles` | `s3:GetObject` | `levi9-praksa-2026-data/pollution/*`, `.../weather/*` | — | Read side of the server-side `CopyObject`. |
+| `ListBronze` | `s3:ListBucket` | our bucket | `s3:prefix` like `bronze/*` | One listing of what is already in bronze, so existing files are skipped. |
+| `WriteBronze` | `s3:PutObject` | our bucket `/bronze/*` | — | Write side of `CopyObject`. Nothing outside `bronze/`. |
+
+There is no write, delete or tagging permission on the source bucket, and no delete permission on ours. The code also
+refuses to start if `TARGET_BUCKET` equals `SOURCE_BUCKET`.
+
+## Bronze copy Lambda (DP-4)
+
+Code: [`lambdas/bronze_copy/handler.py`](../lambdas/bronze_copy/handler.py). Python 3.13, 256 MB, 5-minute timeout.
+
+- **Configuration** is in environment variables, filled from the `bronze_copy` context in `cdk.json`:
+  `SOURCE_BUCKET`, `TARGET_BUCKET` (our bucket), `STATION_ID`, `CITY_NAME` (logs only), `SOURCE_FOLDERS`
+  (comma-separated). The station is selected by numeric ID because the source folder names are NFD-normalized.
+- **Key layout:** `bronze/` + the full source key, e.g. `bronze/pollution/<id> - <name>/<DD-MM-YYYY>/<file>`.
+  File contents are not changed (server-side `CopyObject`; the data never passes through the Lambda).
+- **No trigger:** it runs only when invoked by hand
+  (`aws lambda invoke --function-name <BronzeCopyFunctionName> --profile mateja out.json`). It has no S3 event
+  or schedule, so it can never re-trigger itself on its own writes.
+- **Result:** `{"pollution": {"copied": n, "skipped": m}, "weather": {...}}`.
+
+**What happens if the Lambda runs twice? (control question)** Before copying, it lists the station's keys that
+already exist in `bronze/` and skips them. The second run therefore copies nothing (`copied = 0`) and only picks up
+files that appeared in the source since the first run. The result is the same as after one run (idempotent), and a run
+that stopped halfway (e.g. a timeout) simply continues on the next invocation.
+
+**Cost:** about 4,100 files (~1.5 MB) for Novi Sad. The first run is about 4,100 `CopyObject` requests (~$0.02); every
+later run is a few `LIST` requests (practically $0). The idle Lambda costs nothing.

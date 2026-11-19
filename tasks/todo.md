@@ -38,7 +38,7 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
   - Files: `infra/data_lake_stack.py`, `cdk.json`, `app.py`, `tests/infra/test_data_lake_stack.py` · Scope: M
   - Deps: T3
 
-- [ ] **T5: docs/infra.md**
+- [x] **T5: docs/infra.md**
   - Acceptance: opisani nova Lambda, njena rola, svaka dozvola i zašto; odgovor na kontrolno pitanje; trošak.
   - Verify: uporediti sa `cdk.out/DataLakeStack.template.json`.
   - Files: `docs/infra.md` · Scope: XS · Deps: T4
