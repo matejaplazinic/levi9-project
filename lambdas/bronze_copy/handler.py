@@ -11,14 +11,17 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import boto3
+from botocore.config import Config as BotoConfig
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 BRONZE_PREFIX = "bronze/"
+MAX_WORKERS = 16
 ENV_VARS = ("SOURCE_BUCKET", "TARGET_BUCKET", "STATION_ID", "CITY_NAME", "SOURCE_FOLDERS")
 
 
@@ -84,24 +87,28 @@ def copy_source(s3, source_bucket: str, target_bucket: str, folder: str, station
     station_prefix = find_station_prefix(s3, source_bucket, folder, station_id)
     existing = set(_list_keys(s3, target_bucket, BRONZE_PREFIX + station_prefix))
 
-    copied = skipped = 0
-    for key in _list_keys(s3, source_bucket, station_prefix):
-        target_key = BRONZE_PREFIX + key
-        if target_key in existing:
-            skipped += 1
-            continue
-        # Server-side copy: the data never passes through the Lambda.
-        s3.copy_object(Bucket=target_bucket, Key=target_key, CopySource={"Bucket": source_bucket, "Key": key})
-        copied += 1
+    source_keys = _list_keys(s3, source_bucket, station_prefix)
+    to_copy = [key for key in source_keys if BRONZE_PREFIX + key not in existing]
 
-    log.info("%s: copied %d, skipped %d", folder, copied, skipped)
-    return {"copied": copied, "skipped": skipped}
+    def copy(key: str) -> None:
+        # Server-side copy: the data never passes through the Lambda.
+        s3.copy_object(Bucket=target_bucket, Key=BRONZE_PREFIX + key, CopySource={"Bucket": source_bucket, "Key": key})
+
+    # One copy takes ~80 ms, almost all of it waiting on S3, so threads cut ~4,100 copies from ~5.5 min to seconds.
+    # list() re-raises the first failed copy; files copied before it stay in bronze and are skipped on the next run.
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        list(pool.map(copy, to_copy))
+
+    result = {"copied": len(to_copy), "skipped": len(source_keys) - len(to_copy)}
+    log.info("%s: copied %d, skipped %d", folder, result["copied"], result["skipped"])
+    return result
 
 
 def handler(event, context, s3=None) -> dict[str, dict[str, int]]:
     """Lambda entry point. The event is ignored; everything comes from environment variables."""
     config = load_config()
-    s3 = s3 or boto3.client("s3")
+    # One HTTP connection per copy thread (the default pool has only 10).
+    s3 = s3 or boto3.client("s3", config=BotoConfig(max_pool_connections=MAX_WORKERS))
     log.info("Copying station %s (%s) folders %s to bronze", config.station_id, config.city_name, config.source_folders)
     return {
         folder: copy_source(s3, config.source_bucket, config.target_bucket, folder, config.station_id)

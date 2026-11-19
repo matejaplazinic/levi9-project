@@ -168,3 +168,37 @@ def test_lambda_code_has_no_hardcoded_city_or_station():
     root = Path(handler.__file__).resolve().parent
     offenders = [p.name for p in root.rglob("*.py") if re.search(r"35120|Novi Sad", p.read_text(encoding="utf-8"))]
     assert offenders == []
+
+
+def test_copies_many_files_in_parallel(s3):
+    # More files than worker threads, so every thread handles several copies.
+    keys = [f"weather/{NS}/02-04-2022/file-{i:03d}" for i in range(handler.MAX_WORKERS * 3 + 1)]
+    for key in keys:
+        s3.put_object(Bucket=SOURCE, Key=key, Body=key.encode())
+
+    result = handler.copy_source(s3, SOURCE, TARGET, "weather", "35120")
+
+    assert result == {"copied": len(keys), "skipped": 0}
+    assert _keys(s3, TARGET) == sorted(f"bronze/{k}" for k in keys)
+    assert all(_body(s3, TARGET, f"bronze/{k}") == k.encode() for k in keys)
+
+
+def test_failed_copy_is_raised_and_rerun_finishes(s3, monkeypatch):
+    real_copy = s3.copy_object
+    failing_key = f"bronze/{NS_KEYS[1]}"
+
+    def flaky_copy(**kwargs):
+        if kwargs["Key"] == failing_key:
+            raise RuntimeError("S3 hiccup")
+        return real_copy(**kwargs)
+
+    monkeypatch.setattr(s3, "copy_object", flaky_copy)
+    with pytest.raises(RuntimeError, match="S3 hiccup"):
+        handler.copy_source(s3, SOURCE, TARGET, "pollution", "35120")
+    assert failing_key not in _keys(s3, TARGET)
+
+    monkeypatch.setattr(s3, "copy_object", real_copy)
+    result = handler.copy_source(s3, SOURCE, TARGET, "pollution", "35120")
+
+    assert result["copied"] >= 1
+    assert _keys(s3, TARGET) == sorted(f"bronze/{k}" for k in NS_KEYS)
