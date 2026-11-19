@@ -61,6 +61,10 @@ You may see `Error: ENOTEMPTY ... jsii-kernel-*` at the end of a pytest or cdk r
 
 ## Rules
 
+- Talk to the user in Serbian. Code, comments, commit messages, PR titles and `CLAUDE.md` are in English.
+- Ticket workflow: spec in `tasks/DP-<n>.md` (`/agent-skills:spec`) → `/plan` (`tasks/plan.md`, `tasks/todo.md`) → user
+  reads the plan → `/build` one task at a time (TDD) → `/agent-skills:review` → PR. Wait for the user's approval
+  between phases.
 - **Commits and PR titles are in English and start with the ticket id**, e.g. `DP-3: Add S3 bucket to CDK stack`. Use one commit per task.
 - Branch `feature/DP-<n>-<slug>` from `develop`. PRs go into `develop`, never into `main`. Ask before pushing or opening a PR.
 - **Never write secrets into code, config, logs or test fixtures.** That includes tokens, keys and `.env` contents. Read the token into memory only, from Secrets Manager, and never print it or put it in error messages. Do not hardcode the AWS account ID either: CDK takes it from the profile (`CDK_DEFAULT_ACCOUNT`); a test checks `app.py`, `cdk.json` and `infra/`.
