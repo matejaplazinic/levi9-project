@@ -4,3 +4,6 @@ data/
 __pycache__/
 .pytest_cache/
 *.pyc
+cdk.out/
+.ruff_cache/
+node_modules/
