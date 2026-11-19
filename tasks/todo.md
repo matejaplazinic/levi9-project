@@ -29,7 +29,7 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
 ### Checkpoint A (posle T3)
 - [x] `ruff check .`, `ruff format --check .`, `pytest` zeleno; handler pokriva kriterijume 1, 2 i 4 u moto testovima.
 
-- [ ] **T4: CDK Lambda sa env varijablama i dozvolama**
+- [x] **T4: CDK Lambda sa env varijablama i dozvolama**
   - Acceptance: jedna `AWS::Lambda::Function` (Python 3.13, 256 MB, 5 min) sa 5 env varijabli; vrednosti iz
     `cdk.json` context-a; IAM: izvor samo List + Get na `pollution/*`, `weather/*`, naš bucket List/Get/Put samo na
     `bronze/*`, bez `s3:Delete*` i bez pisanja u izvor; nema S3 notifikacija ni EventBridge pravila; log retencija 7 dana;
