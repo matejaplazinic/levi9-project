@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Levi9 internship 2026 data project. The project combines air pollution and weather sensor data with
 daily tourist estimates for **Novi Sad** (sensor station `35120`). It is built ticket by ticket (`DP-<n>`).
-Each ticket has its spec, plan and tasks in `tasks/` (`tasks/DP-3.md`, `tasks/plan.md`, `tasks/todo.md`).
-The DP-2 spec is in `SPEC.md`.
+Specs: `SPEC.md` (DP-2), `tasks/DP-<n>.md` (from DP-3 on). `tasks/plan.md` and `tasks/todo.md` hold only the
+current ticket's plan and task list; older versions live in git history.
 
 - AWS account access goes through the SSO profile **`mateja`**. The working region is **`eu-north-1`**. SSO itself lives in `eu-west-1`, which is already set in `~/.aws/config`.
 - **Source data** is in bucket `levi9-praksa-2026-data` (eu-north-1, **read-only for us**). The folders are `pollution/`, `weather/`, `sensor/` and `pollution-reduced/`.
@@ -30,7 +30,7 @@ cdk synth --profile mateja                           # template -> cdk.out/
 cdk diff --profile mateja
 cdk deploy --profile mateja                          # ask the user first
 cdk destroy --profile mateja --force                 # ask the user first
-py -m src.fetch_sources --profile mateja --station 35120 --files 5 --skip-tourist   # DP-2 sample download
+.venv/Scripts/python -m src.fetch_sources --profile mateja --station 35120 --files 5 --skip-tourist   # DP-2 sample download
 ```
 
 `cdk.json` runs the app with `.venv\Scripts\python.exe app.py`. That path is Windows-only on purpose, because the CDK CLI runs the app through `cmd`.
@@ -63,8 +63,10 @@ You may see `Error: ENOTEMPTY ... jsii-kernel-*` at the end of a pytest or cdk r
 
 - **Commits and PR titles are in English and start with the ticket id**, e.g. `DP-3: Add S3 bucket to CDK stack`. Use one commit per task.
 - Branch `feature/DP-<n>-<slug>` from `develop`. PRs go into `develop`, never into `main`. Ask before pushing or opening a PR.
-- **Never write secrets into code, config, logs or test fixtures.** That includes tokens, keys and `.env` contents. Read the token into memory only, from Secrets Manager, and never print it or put it in error messages. Do not hardcode the AWS account ID either: CDK takes it from the profile (`CDK_DEFAULT_ACCOUNT`), and a test enforces this.
+- **Never write secrets into code, config, logs or test fixtures.** That includes tokens, keys and `.env` contents. Read the token into memory only, from Secrets Manager, and never print it or put it in error messages. Do not hardcode the AWS account ID either: CDK takes it from the profile (`CDK_DEFAULT_ACCOUNT`); a test checks `app.py`, `cdk.json` and `infra/`.
 - Run `ruff check .`, `ruff format --check .` and `pytest` before every commit.
 - AWS changes happen only through CDK code. Run `cdk diff` before `cdk deploy`. Ask before any `cdk deploy` or `cdk destroy`.
+  The data bucket is `DESTROY` + `auto_delete_objects`: if `cdk diff` shows the bucket being **replaced** (e.g. a renamed
+  construct ID), all its data is deleted. Stop and ask.
 - Never write to or delete from `levi9-praksa-2026-data`. Never modify the `TouristApiStack` or `CDKToolkit` stacks. Never run `cdk bootstrap` (the mentor already did). The `mateja` role is an admin role, but these limits still apply.
 - Ask before adding dependencies. Runtime dependencies go in `requirements.txt`, dev tools in `requirements-dev.txt`.

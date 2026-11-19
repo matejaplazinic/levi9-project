@@ -77,6 +77,14 @@ def test_bucket_is_deleted_with_its_objects_on_destroy(template):
     template.resource_count_is("Custom::S3AutoDeleteObjects", 1)
 
 
+def test_stack_grants_no_extra_roles_or_functions(template):
+    # Only the auto-delete provider may add a role and a Lambda; anything more is a new permission to review.
+    template.resource_count_is("AWS::IAM::Role", 1)
+    template.resource_count_is("AWS::Lambda::Function", 1)
+    template.resource_count_is("AWS::S3::BucketPolicy", 1)
+    template.resource_count_is("AWS::IAM::Policy", 0)
+
+
 def test_bucket_name_is_exported_as_output(template):
     template.has_output("DataBucketName", {"Value": {"Ref": Match.any_value()}})
 

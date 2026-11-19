@@ -31,5 +31,5 @@ Plan: [plan.md](plan.md) · Spec: [DP-3.md](DP-3.md)
   - Acceptance: `cdk deploy` i `cdk destroy --force` prolaze bez ručnih koraka; bucket proveren pa obrisan.
   - Verify: AWS CLI provere + konzola; posle destroy stack i bucket ne postoje.
 
-- [ ] **T7: Review i PR**
+- [x] **T7: Review i PR**
   - Acceptance: review nalazi rešeni; PR ka `develop` sa naslovom `DP-3: ...` (pitati pre pusha).

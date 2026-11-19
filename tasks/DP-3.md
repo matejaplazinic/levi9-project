@@ -1,6 +1,6 @@
 # Spec: DP-3 Data lake bucket (CDK) — V1
 
-Status: proposed
+Status: implemented
 
 ## Objective
 
@@ -47,7 +47,8 @@ cdk deploy --profile mateja
 cdk destroy --profile mateja --force
 ```
 
-`cdk.json` sets `"app": ".venv/Scripts/python app.py"` so the CDK CLI uses the project venv.
+`cdk.json` sets `"app": ".venv\Scripts\python.exe app.py"` so the CDK CLI uses the project venv
+(backslashes because the CLI runs the app through `cmd`).
 
 ## Project Structure
 
@@ -83,6 +84,7 @@ class DataLakeStack(Stack):
             "DataBucket",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            object_ownership=s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
             enforce_ssl=True,
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
@@ -116,18 +118,18 @@ class DataLakeStack(Stack):
 
 ## Success Criteria
 
-- [ ] Branch `feature/DP-3-infra` from `develop` holds all changes.
-- [ ] `ruff check .` and `ruff format --check .` report no issues on the whole repo.
-- [ ] `pytest` passes: DP-2 tests + new stack tests.
-- [ ] `cdk synth` produces a template with only: the bucket, its bucket policy, the auto-delete Lambda,
+- [x] Branch `feature/DP-3-infra` from `develop` holds all changes.
+- [x] `ruff check .` and `ruff format --check .` report no issues on the whole repo.
+- [x] `pytest` passes: DP-2 tests + new stack tests.
+- [x] `cdk synth` produces a template with only: the bucket, its bucket policy, the auto-delete Lambda,
       its role, the custom resource, and the CDK metadata.
-- [ ] `cdk deploy` succeeds; in the console the bucket shows SSE-S3, Block Public Access on (all four),
+- [x] `cdk deploy` succeeds; in the console the bucket shows SSE-S3, Block Public Access on (all four),
       and the SSL-only policy.
-- [ ] `cdk destroy --force` succeeds with no manual steps; the stack and the bucket no longer exist.
-- [ ] `CLAUDE.md` (made with `/init`, refined with the context-engineering skill) covers: what the project
+- [x] `cdk destroy --force` succeeds with no manual steps; the stack and the bucket no longer exist.
+- [x] `CLAUDE.md` (made with `/init`, refined with the context-engineering skill) covers: what the project
       is, the city (Novi Sad, station 35120), region `eu-north-1`, source bucket `levi9-praksa-2026-data`,
       commands, bronze/silver/gold layout, the `DP-<n>:` commit rule, and the no-secrets-in-code rule.
-- [ ] `docs/infra.md` answers the control question: what each permission in the stack does.
+- [x] `docs/infra.md` answers the control question: what each permission in the stack does.
 
 ## Out of Scope (Deferred)
 

@@ -6,7 +6,7 @@ Kad hoćeš da vidiš tačan šablon, pokreni `cdk synth --profile mateja` i otv
 
 ## Šta stack pravi
 
-| Resurs (logički ID) | Tip | Zašto postoji |
+| Resurs (construct; u šablonu logički ID ima hash sufiks, npr. `DataBucketE3889A50`) | Tip | Zašto postoji |
 |---|---|---|
 | `DataBucket` | `AWS::S3::Bucket` | Bucket sa našim podacima pod `bronze/`, `silver/` i `gold/`. |
 | `DataBucketPolicy` | `AWS::S3::BucketPolicy` | Pravila pristupa za bucket (vidi dole). |
@@ -25,7 +25,7 @@ Izlaz `DataBucketName` daje generisano ime bucketa.
 | Block Public Access | sva 4 uključena | `BlockPublicAcls` i `IgnorePublicAcls`: javni ACL ne može da se postavi, a postojeći se ignoriše. `BlockPublicPolicy` i `RestrictPublicBuckets`: bucket policy ne može da da javni pristup. |
 | Object Ownership | `BucketOwnerEnforced` | ACL-ovi su potpuno isključeni. Pristup se određuje samo kroz IAM i bucket policy. |
 | `enforce_ssl` | da | Dodaje Deny izjavu u bucket policy (vidi dole). |
-| Removal policy | `DESTROY` + `auto_delete_objects` | `cdk destroy` briše bucket čak i kad ima podataka. Bez ovoga bi bucket ostao u nalogu kao „siroče“. |
+| Removal policy | `DESTROY` + `auto_delete_objects` | `cdk destroy` briše bucket čak i kad ima podataka. Bez ovoga bi bucket ostao u nalogu kao „siroče“. **Rizik:** isto važi i kad CloudFormation *zameni* bucket (npr. promenjen construct ID), pa svi podaci nestaju. Pre deploya proveri `cdk diff`. Kad u bucketu budu pravi podaci, razmotriti `RETAIN` ili versioning. |
 
 ## Svaka dozvola u stacku (kontrolno pitanje)
 
