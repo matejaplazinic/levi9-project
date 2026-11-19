@@ -17,9 +17,7 @@ BG_NAME = unicodedata.normalize("NFD", "1297 - Dorćol 2, Beograd, Serbia")
 
 @pytest.fixture
 def s3():
-    client = boto3.client(
-        "s3", region_name="eu-north-1", aws_access_key_id="x", aws_secret_access_key="x"
-    )
+    client = boto3.client("s3", region_name="eu-north-1", aws_access_key_id="x", aws_secret_access_key="x")
     with Stubber(client) as stub:
         yield client, stub
 
@@ -118,7 +116,7 @@ def test_download_files_respects_limit(s3, tmp_path):
     client, stub = s3
     keys = [f"pollution/{NS_NAME}/01-04-2022/f{i}" for i in range(4)]
     for k in keys[:2]:
-        body = "name,x\nčš,1\n".encode("utf-8")
+        body = "name,x\nčš,1\n".encode()
         stub.add_response(
             "get_object",
             {"Body": StreamingBody(io.BytesIO(body), len(body))},
