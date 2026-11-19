@@ -44,14 +44,21 @@ Plan: [plan.md](plan.md) · Spec: [DP-4.md](DP-4.md)
   - Files: `docs/infra.md` · Scope: XS · Deps: T4
 
 ### Checkpoint B (posle T5)
-- [ ] Sve zeleno, `cdk diff` pregledan sa korisnikom pre deploy-a.
+- [x] Sve zeleno, `cdk diff` pregledan sa korisnikom pre deploy-a.
 
-- [ ] **T6: Živi deploy i dva pokretanja** (pitam pre `cdk deploy`)
+- [x] **T6: Živi deploy i dva pokretanja** (pitam pre `cdk deploy`)
   - Acceptance: 1. invoke kopira ~2051 + ~2052 fajla; broj objekata u `bronze/pollution/` i `bronze/weather/` =
     broj u izvoru za `35120`; 2. invoke vraća `copied=0`; trajanje i memorija u granicama.
   - Verify: `aws lambda invoke` ×2, `aws s3 ls --recursive ... | wc -l` za izvor i bronze, CloudWatch log.
   - Files: `tasks/todo.md` (rezultati) · Deps: Checkpoint B
   - Posle: pitam da li stack ostaje ili ide `cdk destroy`.
+  - **Rezultati (2026-11-19):**
+    - Prvi deploy, sekvencijalno kopiranje: 1. invoke **timeout na 300 s** (pollution 2051/2051, weather 1741/2052,
+      ~80 ms po kopiji); 2. invoke `copied 311` (nastavio gde je stao); 3. invoke `copied 0`. Dozvole rade, nema
+      `AccessDenied`.
+    - Ispravka `ab605c3` (16 niti), redeploy, `bronze/` ispražnjen: 1. invoke `copied 2051 + 2052` za **99 s**
+      (113 MB); 2. invoke `copied 0` za 8 s.
+    - Bronze = izvor: 2051 + 2052 fajla, isti ključ, ETag i veličina za svaki fajl; van `bronze/` nema objekata.
 
 - [ ] **T7: CLAUDE.md ažuriranje** (uvek poslednji korak pre review-a)
   - Acceptance: arhitektura (`lambdas/bronze_copy`, env varijable, bronze raspored ključeva), komanda za invoke,
